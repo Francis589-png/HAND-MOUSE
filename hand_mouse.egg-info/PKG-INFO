@@ -1,3 +1,36 @@
+Metadata-Version: 2.4
+Name: hand-mouse
+Version: 0.1.0
+Summary: Control your computer with hand gestures or eye gaze (experimental).
+Home-page: https://github.com/jusufrancis/hand-mouse
+Author: FRANCIS JUSU
+Author-email: FRANCIS JUSU <jusufrancis08@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/jusufrancis/hand-mouse
+Project-URL: Source, https://github.com/jusufrancis/hand-mouse
+Project-URL: Issues, https://github.com/jusufrancis/hand-mouse/issues
+Keywords: computer-vision,accessibility,hands,eye-tracking,mediapipe
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: mediapipe
+Requires-Dist: opencv-python
+Requires-Dist: pyautogui
+Requires-Dist: numpy
+Dynamic: author
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-python
+
 # hand_mouse
 
 Control your computer using hand gestures or eye gaze (experimental).
@@ -45,44 +78,4 @@ python -m unittest discover -s hand_mouse/tests -v
 Integration guide and programmatic examples: [docs/Integration.md](docs/Integration.md)
 
 Example integration script: [examples/integrate_app.py](../examples/integrate_app.py)
-
-## Publishing to PyPI
-
-### Prerequisites
-
-- Build artifacts in `dist/`: `hand-mouse-0.1.0.tar.gz` and `hand-mouse-0.1.0-py3-none-any.whl`
-- PyPI account and API token (obtain from https://pypi.org/account/)
-- `twine` tool: `python -m pip install twine`
-
-### Test on TestPyPI (recommended first step)
-
-```bash
-# Create ~/.pypirc or use environment variables
-twine upload --repository testpypi dist/*
-
-# Or with token:
-twine upload --repository testpypi -u __token__ -p pypi-AgEIcHlwaS5vcmc... dist/*
-```
-
-Visit https://test.pypi.org/project/hand-mouse/ to verify.
-
-### Publish to PyPI
-
-```bash
-twine upload dist/*
-
-# Or with token:
-twine upload -u __token__ -p pypi-AgEIcHlwaS5vcmc... dist/*
-```
-
-After upload, users can install with:
-
-```bash
-pip install hand-mouse
-```
-
-### Automating releases with GitHub Actions
-
-Add a workflow that builds and publishes on tag push (optional — requires PyPI API token in GitHub Secrets).
-
-See `.github/workflows/ci.yml` for the current CI setup (tests + build).
+# HAND-MOUSE
