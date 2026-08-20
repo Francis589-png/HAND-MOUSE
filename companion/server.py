@@ -112,12 +112,13 @@ class CompanionServer:
                 try:
                     message = json.loads(raw)
                     if not authenticated:
-                        expected = self.config.token
-                        supplied = message.get("token") if isinstance(message, dict) else None
+                        is_object = isinstance(message, dict)
+                        supplied = message.get("token") if is_object else None
+                        message_type = message.get("type") if is_object else None
                         if (
-                            message.get("type") != "auth"
+                            message_type != "auth"
                             or not isinstance(supplied, str)
-                            or not hmac.compare_digest(supplied, expected)
+                            or not hmac.compare_digest(supplied, self.config.token)
                         ):
                             auth_failures += 1
                             await self._send(websocket, {"ok": False, "error": "authentication failed"})
