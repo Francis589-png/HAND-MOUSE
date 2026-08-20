@@ -9,8 +9,8 @@
         "createdAt": { ".validate": "newData.isNumber()" },
         "members": {
           "$uid": {
-            ".read": "auth != null && (auth.uid === $uid || data.parent().parent().parent().child('members').child(auth.uid).exists())",
-            ".write": "auth != null && data.parent().parent().parent().child('ownerId').val() === auth.uid && !data.exists() && newData.child('name').isString() && newData.child('joinedAt').isNumber()",
+            ".read": "auth != null && (auth.uid === $uid || data.parent().parent().child('members').child(auth.uid).exists())",
+            ".write": "auth != null && data.parent().parent().child('ownerId').val() === auth.uid && !data.exists() && newData.child('name').isString() && newData.child('joinedAt').isNumber()",
             ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 64 && newData.child('joinedAt').isNumber()"
           }
         },
@@ -30,10 +30,10 @@
         },
         "signals": {
           "$peerId": {
-            ".read": "auth != null && (auth.uid === $peerId || data.parent().parent().parent().child('members').child(auth.uid).exists())",
+            ".read": "auth != null && (auth.uid === $peerId || data.parent().parent().child('members').child(auth.uid).exists())",
             "$senderId": {
               "$signalId": {
-                ".write": "auth != null && $senderId === auth.uid && data.parent().parent().parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().parent().parent().child('members').child($peerId).exists()",
+                ".write": "auth != null && $senderId === auth.uid && data.parent().parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().parent().child('members').child($peerId).exists()",
                 ".validate": "newData.child('type').isString() && (newData.child('type').val() === 'offer' || newData.child('type').val() === 'answer' || newData.child('type').val() === 'ice') && newData.child('at').isNumber()"
               }
             }
