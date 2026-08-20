@@ -2,15 +2,22 @@
   "rules": {
     "teams": {
       "$code": {
-        ".read": "auth != null",
+        ".read": "auth != null && (data.child('ownerId').val() === auth.uid || data.child('members').child(auth.uid).exists())",
         ".write": "auth != null && !data.exists() && newData.child('ownerId').val() === auth.uid",
-        "ownerId": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+        ".validate": "newData.child('ownerId').isString() && newData.child('ownerName').isString() && newData.child('ownerName').val().length > 0 && newData.child('ownerName').val().length <= 64 && newData.child('createdAt').isNumber()",
+        "ownerId": { ".validate": "newData.val() === auth.uid || newData.val() === data.val()" },
         "ownerName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" },
         "createdAt": { ".validate": "newData.isNumber()" },
+        "members": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid && (data.parent().parent().child('ownerId').val() === auth.uid || !data.exists())",
+            ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 64 && newData.child('joinedAt').isNumber()"
+          }
+        },
         "requests": {
           "$uid": {
-            ".write": "auth != null && $uid === auth.uid && newData.child('requesterId').val() === auth.uid",
-            ".validate": "newData.child('requesterName').isString() && newData.child('requesterName').val().length <= 64 && newData.child('createdAt').isNumber()"
+            ".write": "auth != null && $uid === auth.uid && data.parent().parent().child('ownerId').val() !== auth.uid",
+            ".validate": "newData.child('requesterId').val() === auth.uid && newData.child('requesterName').isString() && newData.child('requesterName').val().length > 0 && newData.child('requesterName').val().length <= 64 && newData.child('createdAt').isNumber()"
           }
         },
         "responses": {
@@ -23,7 +30,7 @@
           "$peerId": {
             "$senderId": {
               "$signalId": {
-                ".write": "auth != null && $senderId === auth.uid",
+                ".write": "auth != null && $senderId === auth.uid && data.parent().parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().parent().child('members').child($peerId).exists()",
                 ".validate": "newData.child('type').isString() && (newData.child('type').val() === 'offer' || newData.child('type').val() === 'answer' || newData.child('type').val() === 'ice') && newData.child('at').isNumber()"
               }
             }
