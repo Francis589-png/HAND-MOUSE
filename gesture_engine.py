@@ -1,9 +1,4 @@
-"""Deterministic gesture state management for HAND-MOUSE.
-
-This module intentionally contains no camera, MediaPipe, OpenCV, or OS input
-code. Vision code can report a gesture candidate here, while this module is
-responsible for confirmation, cooldowns, and safe state transitions.
-"""
+"""Deterministic gesture state management for HAND-MOUSE."""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -23,12 +18,7 @@ class Gesture(str, Enum):
 
 @dataclass(frozen=True)
 class GestureConfig:
-    """Timing and confirmation settings for :class:`GestureEngine`.
-
-    ``confirmation_frames`` prevents a single noisy frame from triggering an
-    action. ``cooldown_seconds`` prevents the same gesture from firing again
-    immediately after it has been accepted.
-    """
+    """Confirmation settings for the gesture state machine."""
 
     confirmation_frames: int = 3
     cooldown_seconds: float = 0.5
@@ -40,15 +30,24 @@ class GestureConfig:
             raise TypeError("confirmation_frames must be an integer")
         if self.confirmation_frames < 1:
             raise ValueError("confirmation_frames must be >= 1")
+        if not isinstance(self.cooldown_seconds, (int, float)) or isinstance(
+            self.cooldown_seconds, bool
+        ):
+            raise TypeError("cooldown_seconds must be a number")
         if self.cooldown_seconds < 0:
             raise ValueError("cooldown_seconds must be >= 0")
 
 
 class GestureEngine:
-    """Convert noisy per-frame gesture candidates into discrete events.
+    """Turn noisy per-frame candidates into one-shot gesture events.
 
-    The engine is deterministic when a timestamp is supplied to ``update``.
-    It does not perform any system input itself, making it safe to unit test.
+    A gesture must remain present for ``confirmation_frames`` consecutive
+    frames before it is emitted. Once emitted, it cannot fire again until the
+    detector observes ``Gesture.NONE``. This edge-triggered behavior prevents
+    one held pinch from generating a stream of clicks.
+
+    The engine contains no camera, MediaPipe, OpenCV, or OS input code, so it
+    can be tested independently of hardware.
     """
 
     def __init__(self, config: Optional[GestureConfig] = None) -> None:
@@ -56,7 +55,7 @@ class GestureEngine:
         self.current = Gesture.NONE
         self._candidate = Gesture.NONE
         self._candidate_frames = 0
-        self._last_event_gesture = Gesture.NONE
+        self._armed = True
         self._last_event_time: Optional[float] = None
 
     @property
@@ -64,21 +63,21 @@ class GestureEngine:
         """Number of consecutive frames matching the current candidate."""
         return self._candidate_frames
 
+    @property
+    def armed(self) -> bool:
+        """Whether a confirmed gesture is currently allowed to fire."""
+        return self._armed
+
     def reset(self) -> None:
         """Return the engine to its initial state."""
         self.current = Gesture.NONE
         self._candidate = Gesture.NONE
         self._candidate_frames = 0
-        self._last_event_gesture = Gesture.NONE
+        self._armed = True
         self._last_event_time = None
 
     def update(self, gesture: Gesture, timestamp: float) -> Optional[Gesture]:
-        """Process one frame and return a newly confirmed gesture event.
-
-        ``None`` means no new action should be triggered for this frame.
-        ``Gesture.NONE`` is treated as the absence of a gesture and clears the
-        confirmation counter.
-        """
+        """Process one frame and return a newly confirmed gesture event."""
         if not isinstance(gesture, Gesture):
             try:
                 gesture = Gesture(gesture)
@@ -87,11 +86,14 @@ class GestureEngine:
 
         if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
             raise TypeError("timestamp must be a number")
+        if self._last_event_time is not None and timestamp < self._last_event_time:
+            raise ValueError("timestamp must not move backwards")
 
         if gesture is Gesture.NONE:
             self.current = Gesture.NONE
             self._candidate = Gesture.NONE
             self._candidate_frames = 0
+            self._armed = True
             return None
 
         if gesture is self._candidate:
@@ -102,16 +104,9 @@ class GestureEngine:
 
         self.current = gesture
 
-        if self._candidate_frames < self.config.confirmation_frames:
+        if not self._armed or self._candidate_frames < self.config.confirmation_frames:
             return None
 
-        if self._last_event_gesture is gesture and self._last_event_time is not None:
-            elapsed = timestamp - self._last_event_time
-            if elapsed < 0:
-                raise ValueError("timestamp must not move backwards")
-            if elapsed < self.config.cooldown_seconds:
-                return None
-
-        self._last_event_gesture = gesture
+        self._armed = False
         self._last_event_time = float(timestamp)
         return gesture
