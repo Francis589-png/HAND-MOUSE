@@ -1,7 +1,10 @@
 import pyautogui
 from typing import Tuple
 
-from .cursor_motion import CursorSmoother, normalized_to_screen
+try:
+    from .cursor_motion import CursorSmoother, normalized_to_screen
+except ImportError:  # Supports direct loading used by lightweight test tooling.
+    from cursor_motion import CursorSmoother, normalized_to_screen
 
 pyautogui.FAILSAFE = False
 
