@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from math import isfinite
 from typing import Optional
 
 
@@ -34,6 +35,8 @@ class GestureConfig:
             self.cooldown_seconds, bool
         ):
             raise TypeError("cooldown_seconds must be a number")
+        if not isfinite(float(self.cooldown_seconds)):
+            raise ValueError("cooldown_seconds must be finite")
         if self.cooldown_seconds < 0:
             raise ValueError("cooldown_seconds must be >= 0")
 
@@ -86,6 +89,9 @@ class GestureEngine:
 
         if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
             raise TypeError("timestamp must be a number")
+        timestamp = float(timestamp)
+        if not isfinite(timestamp):
+            raise ValueError("timestamp must be finite")
         if self._last_event_time is not None and timestamp < self._last_event_time:
             raise ValueError("timestamp must not move backwards")
 
@@ -114,5 +120,5 @@ class GestureEngine:
             return None
 
         self._armed = False
-        self._last_event_time = float(timestamp)
+        self._last_event_time = timestamp
         return gesture
