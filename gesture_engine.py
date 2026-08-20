@@ -18,7 +18,7 @@ class Gesture(str, Enum):
 
 @dataclass(frozen=True)
 class GestureConfig:
-    """Confirmation settings for the gesture state machine."""
+    """Confirmation and timing settings for the gesture state machine."""
 
     confirmation_frames: int = 3
     cooldown_seconds: float = 0.5
@@ -39,12 +39,12 @@ class GestureConfig:
 
 
 class GestureEngine:
-    """Turn noisy per-frame candidates into one-shot gesture events.
+    """Turn noisy per-frame candidates into safe, one-shot gesture events.
 
     A gesture must remain present for ``confirmation_frames`` consecutive
     frames before it is emitted. Once emitted, it cannot fire again until the
-    detector observes ``Gesture.NONE``. This edge-triggered behavior prevents
-    one held pinch from generating a stream of clicks.
+    detector observes ``Gesture.NONE``. A cooldown additionally prevents a
+    newly armed gesture from firing immediately after the previous event.
 
     The engine contains no camera, MediaPipe, OpenCV, or OS input code, so it
     can be tested independently of hardware.
@@ -105,6 +105,12 @@ class GestureEngine:
         self.current = gesture
 
         if not self._armed or self._candidate_frames < self.config.confirmation_frames:
+            return None
+
+        if (
+            self._last_event_time is not None
+            and timestamp - self._last_event_time < self.config.cooldown_seconds
+        ):
             return None
 
         self._armed = False
