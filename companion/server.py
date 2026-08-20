@@ -1,14 +1,16 @@
 """WebSocket desktop companion for HAND-MOUSE.
 
-The companion is intentionally small: the browser owns camera/vision work and
-this process is responsible only for authenticated OS input on the host.
+The browser owns camera/vision work. This process is responsible only for
+authenticated OS input on the host. Non-loopback connections require TLS.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
+import ssl
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +28,7 @@ from .protocol import validate_command
 
 LOGGER = logging.getLogger("hand_mouse.companion")
 MAX_MESSAGE_SIZE = 4096
+MAX_AUTH_FAILURES = 5
 
 
 @dataclass(frozen=True)
@@ -34,12 +37,26 @@ class CompanionConfig:
     port: int = 8765
     token: str = ""
     origin: str | None = None
+    certfile: str | None = None
+    keyfile: str | None = None
 
     def __post_init__(self) -> None:
         if not self.token or len(self.token) < 16:
             raise ValueError("token must contain at least 16 characters")
         if not 1 <= self.port <= 65535:
             raise ValueError("port must be between 1 and 65535")
+        if (self.certfile is None) != (self.keyfile is None):
+            raise ValueError("certfile and keyfile must be provided together")
+        if self.is_non_loopback and self.certfile is None:
+            raise ValueError("TLS certificate and key are required for non-loopback hosts")
+
+    @property
+    def is_non_loopback(self) -> bool:
+        return self.host not in {"127.0.0.1", "localhost", "::1"}
+
+    @property
+    def tls_enabled(self) -> bool:
+        return self.certfile is not None
 
 
 class CompanionServer:
@@ -47,6 +64,14 @@ class CompanionServer:
 
     def __init__(self, config: CompanionConfig) -> None:
         self.config = config
+
+    def _ssl_context(self) -> ssl.SSLContext | None:
+        if not self.config.tls_enabled:
+            return None
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(self.config.certfile, self.config.keyfile)
+        return context
 
     async def _send(self, websocket: Any, payload: dict[str, Any]) -> None:
         await websocket.send(json.dumps(payload, separators=(",", ":")))
@@ -76,6 +101,7 @@ class CompanionServer:
 
     async def handler(self, websocket: Any) -> None:
         authenticated = False
+        auth_failures = 0
         try:
             async for raw in websocket:
                 if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_MESSAGE_SIZE:
@@ -86,10 +112,19 @@ class CompanionServer:
                 try:
                     message = json.loads(raw)
                     if not authenticated:
-                        if message.get("type") != "auth" or message.get("token") != self.config.token:
+                        expected = self.config.token
+                        supplied = message.get("token") if isinstance(message, dict) else None
+                        if (
+                            message.get("type") != "auth"
+                            or not isinstance(supplied, str)
+                            or not hmac.compare_digest(supplied, expected)
+                        ):
+                            auth_failures += 1
                             await self._send(websocket, {"ok": False, "error": "authentication failed"})
-                            await websocket.close(code=1008, reason="authentication failed")
-                            return
+                            if auth_failures >= MAX_AUTH_FAILURES:
+                                await websocket.close(code=1008, reason="too many authentication failures")
+                                return
+                            continue
                         authenticated = True
                         await self._send(websocket, {"ok": True, "type": "authenticated"})
                         continue
@@ -107,12 +142,19 @@ class CompanionServer:
 
     async def run(self) -> None:
         origins = [self.config.origin] if self.config.origin else None
-        LOGGER.info("HAND-MOUSE companion listening on %s:%s", self.config.host, self.config.port)
+        ssl_context = self._ssl_context()
+        LOGGER.info(
+            "HAND-MOUSE companion listening on %s:%s (%s)",
+            self.config.host,
+            self.config.port,
+            "TLS" if ssl_context else "local-only",
+        )
         async with serve(
             self.handler,
             self.config.host,
             self.config.port,
             origins=origins,
             max_size=MAX_MESSAGE_SIZE,
-        ) as server:
-            await server.serve_forever()
+            ssl=ssl_context,
+        ):
+            await asyncio.Future()
