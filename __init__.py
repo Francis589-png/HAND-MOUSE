@@ -1,9 +1,17 @@
 from .tracker import HandTracker
 from .cursor import CursorController
 from .eye_tracker import EyeTracker
+from .gesture_engine import Gesture, GestureConfig, GestureEngine
 from .utils import *
 
-__all__ = ["HandTracker", "EyeTracker", "CursorController"]
+__all__ = [
+    "HandTracker",
+    "EyeTracker",
+    "CursorController",
+    "Gesture",
+    "GestureConfig",
+    "GestureEngine",
+]
 
 # Package metadata
 __author__ = "FRANCIS JUSU"
