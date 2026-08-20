@@ -2,35 +2,38 @@
   "rules": {
     "teams": {
       "$code": {
-        ".read": "auth != null && (data.child('ownerId').val() === auth.uid || data.child('members').child(auth.uid).exists())",
         ".write": "auth != null && !data.exists() && newData.child('ownerId').val() === auth.uid",
         ".validate": "newData.child('ownerId').isString() && newData.child('ownerName').isString() && newData.child('ownerName').val().length > 0 && newData.child('ownerName').val().length <= 64 && newData.child('createdAt').isNumber()",
-        "ownerId": { ".validate": "newData.val() === auth.uid || newData.val() === data.val()" },
+        "ownerId": { ".validate": "newData.val() === data.val() || newData.val() === auth.uid" },
         "ownerName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" },
         "createdAt": { ".validate": "newData.isNumber()" },
         "members": {
           "$uid": {
-            ".write": "auth != null && $uid === auth.uid && (data.parent().parent().child('ownerId').val() === auth.uid || !data.exists())",
+            ".read": "auth != null && (auth.uid === $uid || data.parent().parent().parent().child('members').child(auth.uid).exists())",
+            ".write": "auth != null && data.parent().parent().parent().child('ownerId').val() === auth.uid && !data.exists() && newData.child('name').isString() && newData.child('joinedAt').isNumber()",
             ".validate": "newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 64 && newData.child('joinedAt').isNumber()"
           }
         },
         "requests": {
           "$uid": {
-            ".write": "auth != null && $uid === auth.uid && data.parent().parent().child('ownerId').val() !== auth.uid",
+            ".read": "auth != null && data.parent().parent().child('ownerId').val() === auth.uid",
+            ".write": "auth != null && $uid === auth.uid && data.parent().parent().child('ownerId').val() !== auth.uid && !data.exists()",
             ".validate": "newData.child('requesterId').val() === auth.uid && newData.child('requesterName').isString() && newData.child('requesterName').val().length > 0 && newData.child('requesterName').val().length <= 64 && newData.child('createdAt').isNumber()"
           }
         },
         "responses": {
           "$uid": {
-            ".write": "auth != null && data.parent().parent().child('ownerId').val() === auth.uid",
-            ".validate": "newData.child('accepted').isBoolean() && newData.child('at').isNumber()"
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && data.parent().parent().child('ownerId').val() === auth.uid && !data.exists()",
+            ".validate": "newData.child('accepted').isBoolean() && newData.child('at').isNumber() && newData.child('ownerId').val() === auth.uid"
           }
         },
         "signals": {
           "$peerId": {
+            ".read": "auth != null && (auth.uid === $peerId || data.parent().parent().parent().child('members').child(auth.uid).exists())",
             "$senderId": {
               "$signalId": {
-                ".write": "auth != null && $senderId === auth.uid && data.parent().parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().parent().child('members').child($peerId).exists()",
+                ".write": "auth != null && $senderId === auth.uid && data.parent().parent().parent().parent().parent().child('members').child(auth.uid).exists() && data.parent().parent().parent().parent().parent().child('members').child($peerId).exists()",
                 ".validate": "newData.child('type').isString() && (newData.child('type').val() === 'offer' || newData.child('type').val() === 'answer' || newData.child('type').val() === 'ice') && newData.child('at').isNumber()"
               }
             }
