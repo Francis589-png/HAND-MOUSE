@@ -1,6 +1,7 @@
 import { FilesetResolver, HandLandmarker, type HandLandmarkerResult } from "@mediapipe/tasks-vision";
 
-const WASM_ROOT = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm";
+const MEDIAPIPE_VERSION = "0.10.35";
+const WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 export class HandVision {
@@ -40,5 +41,5 @@ export function pinchDistance(result: HandLandmarkerResult): number | null {
 export function pointerPosition(result: HandLandmarkerResult): { x: number; y: number } | null {
   const hand = result.landmarks[0];
   if (!hand || hand.length < 9) return null;
-  return { x: 1 - hand[8].x, y: hand[8].y };
+  return { x: Math.min(1, Math.max(0, 1 - hand[8].x)), y: Math.min(1, Math.max(0, hand[8].y)) };
 }
