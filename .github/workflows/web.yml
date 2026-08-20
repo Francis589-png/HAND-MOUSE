@@ -6,11 +6,15 @@ on:
     paths:
       - "web/**"
       - "netlify.toml"
+      - "firebase.json"
+      - "database.rules.json"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "web/**"
       - "netlify.toml"
+      - "firebase.json"
+      - "database.rules.json"
       - ".github/workflows/web.yml"
 
 permissions:
@@ -33,7 +37,11 @@ jobs:
           cache-dependency-path: web/package.json
       - name: Install dependencies
         run: npm install
-      - name: Test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Unit tests
         run: npm test
       - name: Build
         run: npm run build
+      - name: Real browser WebRTC test
+        run: npm run test:e2e
