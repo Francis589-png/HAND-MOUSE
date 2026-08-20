@@ -1,27 +1,53 @@
 import pyautogui
 from typing import Tuple
 
+from .cursor_motion import CursorSmoother, normalized_to_screen
+
 pyautogui.FAILSAFE = False
 
 
 class CursorController:
-    """Simple wrapper around pyautogui for normalized cursor control."""
-    def __init__(self, screen_size: Tuple[int, int] = None):
+    """Wrapper around pyautogui for normalized cursor control.
+
+    Smoothing is opt-in so existing callers keep the original direct-motion
+    behavior when ``smoothing_alpha=1.0``.
+    """
+
+    def __init__(
+        self,
+        screen_size: Tuple[int, int] = None,
+        smoothing_alpha: float = 1.0,
+    ):
         if screen_size is None:
             self.screen_width, self.screen_height = pyautogui.size()
         else:
             self.screen_width, self.screen_height = screen_size
+        self._smoother = CursorSmoother(smoothing_alpha)
+        self._previous_position = None
 
     def move_to_norm(self, x_norm: float, y_norm: float) -> None:
         """Move cursor to normalized coordinates (0..1).
 
-        Args:
-            x_norm: horizontal position normalized [0,1]
-            y_norm: vertical position normalized [0,1]
+        With ``smoothing_alpha=1.0`` the target is used directly. Lower values
+        move part of the distance toward each new target to reduce jitter.
         """
-        x = int(max(0, min(1, x_norm)) * self.screen_width)
-        y = int(max(0, min(1, y_norm)) * self.screen_height)
+        target = (
+            max(0.0, min(1.0, float(x_norm))),
+            max(0.0, min(1.0, float(y_norm))),
+        )
+        if self._previous_position is None:
+            position = target
+        else:
+            position = self._smoother.update(self._previous_position, target)
+        self._previous_position = position
+        x, y = normalized_to_screen(
+            position[0], position[1], (self.screen_width, self.screen_height)
+        )
         pyautogui.moveTo(x, y)
+
+    def reset_motion(self) -> None:
+        """Forget the previous position before starting a new tracking session."""
+        self._previous_position = None
 
     def left_click(self) -> None:
         pyautogui.click()
