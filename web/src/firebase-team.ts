@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously } from "firebase/auth";
-import { getDatabase, onDisconnect, onValue, push, ref, remove, set } from "firebase/database";
+import { getDatabase, onChildAdded, onDisconnect, onValue, push, ref, remove, set } from "firebase/database";
 
 export type TeamSignal =
   | { type: "offer"; sdp: RTCSessionDescriptionInit }
@@ -32,27 +32,31 @@ function teamRef(code: string, child = ""): ReturnType<typeof ref> {
   return ref(database, `teams/${code}${child ? `/${child}` : ""}`);
 }
 
-export async function createTeam(code: string, ownerName: string): Promise<void> {
+export async function createTeam(code: string, ownerName: string): Promise<string> {
   const uid = await ensureTeamAuth();
-  await set(teamRef(code), { ownerId: uid, ownerName, createdAt: Date.now() });
-  await onDisconnect(teamRef(code)).remove();
+  await set(teamRef(code), { ownerId: uid, ownerName, createdAt: Date.now(), members: { [uid]: { name: ownerName, joinedAt: Date.now() } } });
+  onDisconnect(teamRef(code)).remove();
+  return uid;
 }
 
-export async function requestTeam(code: string, requesterName: string): Promise<void> {
+export async function requestTeam(code: string, requesterName: string): Promise<string> {
   const uid = await ensureTeamAuth();
   await set(teamRef(code, `requests/${uid}`), { requesterId: uid, requesterName, createdAt: Date.now() });
+  onDisconnect(teamRef(code, `requests/${uid}`)).remove();
+  return uid;
 }
 
 export function listenToRequests(code: string, callback: (request: TeamRequest | null) => void): () => void {
-  return onValue(teamRef(code, "requests"), (snapshot) => {
-    const values = snapshot.val() as Record<string, TeamRequest> | null;
-    const first = values ? Object.values(values).sort((a, b) => a.createdAt - b.createdAt)[0] : null;
-    callback(first);
-  });
+  return onChildAdded(teamRef(code, "requests"), (snapshot) => callback(snapshot.val() as TeamRequest));
 }
 
-export async function setTeamAccepted(code: string, peerId: string, accepted: boolean): Promise<void> {
-  await set(teamRef(code, `responses/${peerId}`), { accepted, at: Date.now() });
+export async function setTeamAccepted(code: string, peerId: string, accepted: boolean, peerName?: string): Promise<void> {
+  const uid = await ensureTeamAuth();
+  if (accepted) {
+    await set(teamRef(code, `members/${peerId}`), { name: peerName ?? "Team member", joinedAt: Date.now() });
+  }
+  await set(teamRef(code, `responses/${peerId}`), { accepted, at: Date.now(), ownerId: uid });
+  if (!accepted) await remove(teamRef(code, `requests/${peerId}`));
 }
 
 export function listenToResponse(code: string, peerId: string, callback: (accepted: boolean | null) => void): () => void {
@@ -68,12 +72,8 @@ export async function sendSignal(code: string, peerId: string, signal: TeamSigna
 }
 
 export function listenToSignals(code: string, peerId: string, callback: (signal: TeamSignal) => void): () => void {
-  return onValue(teamRef(code, `signals/${peerId}`), (snapshot) => {
-    const senders = snapshot.val() as Record<string, Record<string, TeamSignal>> | null;
-    if (!senders) return;
-    for (const messages of Object.values(senders)) {
-      for (const message of Object.values(messages)) callback(message);
-    }
+  return onChildAdded(teamRef(code, `signals/${peerId}`), (senderSnapshot) => {
+    onChildAdded(senderSnapshot.ref, (messageSnapshot) => callback(messageSnapshot.val() as TeamSignal));
   });
 }
 
