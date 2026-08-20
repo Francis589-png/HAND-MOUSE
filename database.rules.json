@@ -1,0 +1,35 @@
+{
+  "rules": {
+    "teams": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists() && newData.child('ownerId').val() === auth.uid",
+        "ownerId": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+        "ownerName": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "requests": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid && newData.child('requesterId').val() === auth.uid",
+            ".validate": "newData.child('requesterName').isString() && newData.child('requesterName').val().length <= 64 && newData.child('createdAt').isNumber()"
+          }
+        },
+        "responses": {
+          "$uid": {
+            ".write": "auth != null && data.parent().parent().child('ownerId').val() === auth.uid",
+            ".validate": "newData.child('accepted').isBoolean() && newData.child('at').isNumber()"
+          }
+        },
+        "signals": {
+          "$peerId": {
+            "$senderId": {
+              "$signalId": {
+                ".write": "auth != null && $senderId === auth.uid",
+                ".validate": "newData.child('type').isString() && (newData.child('type').val() === 'offer' || newData.child('type').val() === 'answer' || newData.child('type').val() === 'ice') && newData.child('at').isNumber()"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
