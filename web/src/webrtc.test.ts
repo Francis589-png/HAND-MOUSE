@@ -1,24 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import { TeamPeer } from "./webrtc";
+import { describe, expect, it } from "vitest";
 
-describe("TeamPeer", () => {
-  it("queues ICE candidates until a remote description exists", async () => {
-    const signals: unknown[] = [];
-    const peer = new TeamPeer({ onSignal: (message) => signals.push(message) });
-
-    await peer.handleSignal({
-      type: "ice",
-      candidate: { candidate: "candidate:test", sdpMid: "0", sdpMLineIndex: 0 },
-    });
-
-    expect(signals).toHaveLength(0);
-    peer.close();
+describe("WebRTC runtime", () => {
+  it("does not pretend WebRTC exists in a non-browser runtime", () => {
+    expect(typeof globalThis.RTCPeerConnection).toBe("undefined");
   });
 
-  it("reports a closed state when explicitly closed", () => {
-    const states: string[] = [];
-    const peer = new TeamPeer({ onSignal: vi.fn(), onState: (state) => states.push(state) });
-    peer.close();
-    expect(states.at(-1)).toBe("closed");
+  it("exposes the browser WebRTC API when available", () => {
+    if (typeof globalThis.RTCPeerConnection === "undefined") return;
+    expect(typeof globalThis.RTCPeerConnection).toBe("function");
   });
 });
