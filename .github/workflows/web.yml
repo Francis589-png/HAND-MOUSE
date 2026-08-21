@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "companion/**"
       - "netlify.toml"
       - "firebase.json"
       - "database.rules.json"
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - "web/**"
+      - "companion/**"
       - "netlify.toml"
       - "firebase.json"
       - "database.rules.json"
@@ -50,3 +52,27 @@ jobs:
         run: npm run build
       - name: Real browser WebRTC test
         run: npm run test:e2e
+
+  companion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Install companion dependencies
+        run: python -m pip install -r companion/requirements.txt
+      - name: Companion protocol tests
+        run: python -m unittest discover -s companion/tests -v
+      - name: Real companion integration test
+        env:
+          DISPLAY: ":99"
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > /tmp/xvfb.log 2>&1 &
+          XVFB_PID=$!
+          trap 'kill $XVFB_PID' EXIT
+          python -m unittest companion.tests.test_server_integration -v
