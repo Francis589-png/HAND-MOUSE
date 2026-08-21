@@ -1,73 +1,114 @@
 import { test, expect } from "@playwright/test";
 
-test("two real Chromium peers establish a WebRTC data channel", async ({ browser }) => {
+async function waitForIceGathering(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(async () => {
+    const pc = (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc;
+    if (!pc) throw new Error("Peer connection was not initialized");
+    if (pc.iceGatheringState === "complete") return;
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("ICE gathering timeout")), 10_000);
+      pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") {
+          window.clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+  });
+}
+
+test("two independent Chromium pages establish a real WebRTC data channel", async ({ browser }) => {
   const a = await browser.newPage();
   const b = await browser.newPage();
 
   await Promise.all([a.goto("about:blank"), b.goto("about:blank")]);
 
-  const result = await a.evaluate(async () => {
-    const pcA = new RTCPeerConnection({ iceServers: [] });
-    const pcB = new RTCPeerConnection({ iceServers: [] });
-    const channel = pcA.createDataChannel("hand-mouse-test");
-    const received = new Promise<string>((resolve, reject) => {
+  await a.evaluate(() => {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    const channel = pc.createDataChannel("hand-mouse-test", { ordered: true });
+    (window as Window & { __handMousePc?: RTCPeerConnection; __handMouseChannel?: RTCDataChannel }).__handMousePc = pc;
+    (window as Window & { __handMousePc?: RTCPeerConnection; __handMouseChannel?: RTCDataChannel }).__handMouseChannel = channel;
+  });
+
+  await b.evaluate(() => {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    (window as Window & { __handMousePc?: RTCPeerConnection; __handMouseReceived?: Promise<string> }).__handMousePc = pc;
+    (window as Window & { __handMousePc?: RTCPeerConnection; __handMouseReceived?: Promise<string> }).__handMouseReceived = new Promise<string>((resolve, reject) => {
       const timer = window.setTimeout(() => reject(new Error("DataChannel message timeout")), 10_000);
-      pcB.ondatachannel = (event) => {
+      pc.ondatachannel = (event) => {
         event.channel.onmessage = (message) => {
           window.clearTimeout(timer);
           resolve(String(message.data));
         };
       };
     });
-
-    const candidatesA: RTCIceCandidateInit[] = [];
-    const candidatesB: RTCIceCandidateInit[] = [];
-    pcA.onicecandidate = (event) => { if (event.candidate) candidatesA.push(event.candidate.toJSON()); };
-    pcB.onicecandidate = (event) => { if (event.candidate) candidatesB.push(event.candidate.toJSON()); };
-
-    await pcA.setLocalDescription(await pcA.createOffer());
-    await pcB.setRemoteDescription(pcA.localDescription!);
-    await pcB.setLocalDescription(await pcB.createAnswer());
-    await pcA.setRemoteDescription(pcB.localDescription!);
-
-    await new Promise<void>((resolve, reject) => {
-      const deadline = Date.now() + 10_000;
-      const timer = window.setInterval(async () => {
-        try {
-          for (const candidate of candidatesA) await pcB.addIceCandidate(candidate);
-          candidatesA.length = 0;
-          for (const candidate of candidatesB) await pcA.addIceCandidate(candidate);
-          candidatesB.length = 0;
-          if (pcA.iceConnectionState === "connected" || pcA.iceConnectionState === "completed") {
-            window.clearInterval(timer);
-            resolve();
-          } else if (Date.now() > deadline) {
-            window.clearInterval(timer);
-            reject(new Error(`ICE failed: ${pcA.iceConnectionState}/${pcB.iceConnectionState}`));
-          }
-        } catch (error) {
-          window.clearInterval(timer);
-          reject(error);
-        }
-      }, 50);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error("DataChannel open timeout")), 10_000);
-      if (channel.readyState === "open") {
-        window.clearTimeout(timer);
-        resolve();
-      } else channel.onopen = () => { window.clearTimeout(timer); resolve(); };
-    });
-
-    channel.send("HAND-MOUSE-WEBRTC-OK");
-    const message = await received;
-    pcA.close();
-    pcB.close();
-    return message;
   });
 
-  expect(result).toBe("HAND-MOUSE-WEBRTC-OK");
-  await a.close();
-  await b.close();
+  const offer = await a.evaluate(async () => {
+    const pc = (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc!;
+    await pc.setLocalDescription(await pc.createOffer());
+    return new Promise<RTCSessionDescriptionInit>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Offer ICE gathering timeout")), 10_000);
+      const finish = () => {
+        if (!pc.localDescription) return;
+        window.clearTimeout(timeout);
+        resolve({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
+      };
+      if (pc.iceGatheringState === "complete") finish();
+      else pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") finish();
+      });
+    });
+  });
+
+  const answer = await b.evaluate(async (remoteOffer) => {
+    const pc = (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc!;
+    await pc.setRemoteDescription(remoteOffer);
+    await pc.setLocalDescription(await pc.createAnswer());
+    return new Promise<RTCSessionDescriptionInit>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("Answer ICE gathering timeout")), 10_000);
+      const finish = () => {
+        if (!pc.localDescription) return;
+        window.clearTimeout(timeout);
+        resolve({ type: pc.localDescription.type, sdp: pc.localDescription.sdp });
+      };
+      if (pc.iceGatheringState === "complete") finish();
+      else pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") finish();
+      });
+    });
+  }, offer);
+
+  await a.evaluate(async (remoteAnswer) => {
+    const pc = (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc!;
+    await pc.setRemoteDescription(remoteAnswer);
+  }, answer);
+
+  await a.evaluate(async () => {
+    const channel = (window as Window & { __handMouseChannel?: RTCDataChannel }).__handMouseChannel!;
+    if (channel.readyState !== "open") {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error("DataChannel open timeout")), 10_000);
+        channel.addEventListener("open", () => {
+          window.clearTimeout(timeout);
+          resolve();
+        }, { once: true });
+      });
+    }
+    channel.send("HAND-MOUSE-WEBRTC-OK");
+  });
+
+  const received = await b.evaluate(async () => {
+    const state = window as Window & { __handMouseReceived?: Promise<string> };
+    return state.__handMouseReceived;
+  });
+
+  expect(received).toBe("HAND-MOUSE-WEBRTC-OK");
+
+  await Promise.all([
+    a.evaluate(() => (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc?.close()),
+    b.evaluate(() => (window as Window & { __handMousePc?: RTCPeerConnection }).__handMousePc?.close()),
+    a.close(),
+    b.close(),
+  ]);
 });
