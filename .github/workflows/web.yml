@@ -1,6 +1,7 @@
 name: HAND-MOUSE Web
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -19,6 +20,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: hand-mouse-web-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   web:
